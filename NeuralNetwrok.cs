@@ -1,68 +1,66 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 /// <summary>
-/// Simple MLP Neural Network
+/// Simple MLP Neural Network, BackPropogation
 /// </summary>
 public class NeuralNetwork
 {
+    private int[] _layer; //layer information
+    private Layer[] _layers; //layers in the network
 
-    int[] layer; //layer information
-    Layer[] layers; //layers in the network
     /// <summary>
     /// Save NeuralNetwork values
     /// </summary>
-    /// <param name="save file name">file name or path</param>
-    public void SaveNetwork(string FileName)
+    /// <param name="fileName">file name or path</param>
+    public void SaveNetwork(string fileName)
     {
-    	string text = "";
-    	string[] tex;
-        text += layer.Length.ToString();
+        var text = "";
+        text += _layer.Length.ToString();
         text += " ";
-        foreach(int X in layer)
+        text = _layer.Aggregate(text, (current, x) => current + (x + " "));
+        using (var file = new StreamWriter(fileName))
         {
-        	text += X + " ";
-        }
-    	using(System.IO.StreamWriter file = new System.IO.StreamWriter(FileName))
-    	{
-    		file.Write(text);
-    		file.WriteLine("");
-    		file.WriteLine(layers.Length.ToString());
-        	text = String.Empty;
-        	for(int i = 0;i < layers.Length;i++)
-        	{
-        		tex = layers[i].SaveinString();
-                foreach(string x in tex)
+            file.Write(text);
+            file.WriteLine("");
+            file.WriteLine(_layers.Length.ToString());
+            foreach (var t in _layers)
+            {
+                var tex = t.SaveinString();
+                foreach (var x in tex)
                 {
                     file.WriteLine(x);
                 }
-        	}
-    	}
+            }
+        }
     }
+
     /// <summary>
     /// Loads NeuralNetwork values
     /// </summary>
-    /// <param name="file name from wich to load">file name or path</param>
-    public void LoadNetwork(string FileName)
+    /// <param name="fileName">file name or path</param>
+    public void LoadNetwork(string fileName)
     {
-        string[] data = System.IO.File.ReadAllLines(FileName);
-        string[] spl;
-        spl = data[0].Split(' ');
-        int pos = 2;
-        layer = new int[Int32.Parse(spl[0])];
-        for(int i = 0;i < layer.Length;i++)
+        var data = File.ReadAllLines(fileName);
+        var spl = data[0].Split(' ');
+        var pos = 2;
+        _layer = new int[int.Parse(spl[0])];
+        for (var i = 0; i < _layer.Length; i++)
         {
-        	layer[i] = Int32.Parse(spl[i + 1]);
+            _layer[i] = int.Parse(spl[i + 1]);
         }
-        layers = new Layer[Int32.Parse(data[1])];
-        for(int i = 0;i < layers.Length;i++)
+        _layers = new Layer[int.Parse(data[1])];
+        for (var i = 0; i < _layers.Length; i++)
         {
-            layers[i] = new Layer(layer[i], layer[i + 1]);
-            for(int y = 0;y < layer[i + 1];y++)
+            _layers[i] = new Layer(_layer[i], _layer[i + 1]);
+            for (var y = 0; y < _layer[i + 1]; y++)
             {
                 spl = data[pos].Split(' ');
-                for (int x = 0;x < layer[i];x++)
+                for (var x = 0; x < _layer[i]; x++)
                 {
-                    layers[i].weights[y, x] = float.Parse(spl[x]);
+                    _layers[i].weights[y, x] = float.Parse(spl[x]);
                 }
                 pos++;
             }
@@ -72,19 +70,19 @@ public class NeuralNetwork
     /// Constructor setting up layers
     /// </summary>
     /// <param name="layer">Layers of this network</param>
-    public NeuralNetwork(int[] layer)
+    public NeuralNetwork(IReadOnlyList<int> layer)
     {
         //deep copy layers
-        this.layer = new int[layer.Length];
-        for (int i = 0; i < layer.Length; i++)
-            this.layer[i] = layer[i];
+        _layer = new int[layer.Count];
+        for (var i = 0; i < layer.Count; i++)
+        {_layer[i] = layer[i];}
 
         //creates neural layers
-        layers = new Layer[layer.Length - 1];
+        _layers = new Layer[layer.Count - 1];
 
-        for (int i = 0; i < layers.Length; i++)
+        for (var i = 0; i < _layers.Length; i++)
         {
-            layers[i] = new Layer(layer[i], layer[i + 1]);
+            _layers[i] = new Layer(layer[i], layer[i + 1]);
         }
     }
 
@@ -96,13 +94,13 @@ public class NeuralNetwork
     public float[] FeedForward(float[] inputs)
     {
         //feed forward
-        layers[0].FeedForward(inputs);
-        for (int i = 1; i < layers.Length; i++)
+        _layers[0].FeedForward(inputs);
+        for (var i = 1; i < _layers.Length; i++)
         {
-            layers[i].FeedForward(layers[i - 1].outputs);
+            _layers[i].FeedForward(_layers[i - 1].outputs);
         }
 
-        return layers[layers.Length - 1].outputs; //return output of last layer
+        return _layers[_layers.Length - 1].outputs; //return output of last layer
     }
 
     /// <summary>
@@ -113,42 +111,42 @@ public class NeuralNetwork
     public void BackProp(float[] expected)
     {
         // run over all layers backwards
-        for (int i = layers.Length - 1; i >= 0; i--)
+        for (var i = _layers.Length - 1; i >= 0; i--)
         {
-            if (i == layers.Length - 1)
+            if (i == _layers.Length - 1)
             {
-                layers[i].BackPropOutput(expected); //back prop output
+                _layers[i].BackPropOutput(expected); //back prop output
             }
             else
             {
-                layers[i].BackPropHidden(layers[i + 1].gamma, layers[i + 1].weights); //back prop hidden
+                _layers[i].BackPropHidden(_layers[i + 1].gamma, _layers[i + 1].weights); //back prop hidden
             }
         }
 
         //Update weights
-        for (int i = 0; i < layers.Length; i++)
+        foreach (var th in _layers)
         {
-            layers[i].UpdateWeights();
+            th.UpdateWeights();
         }
     }
 
     /// <summary>
     /// Each individual layer in the ML{
     /// </summary>
-    public class Layer
+    private class Layer
     {
         int numberOfInputs; //# of neurons in the previous layer
         int numberOfOuputs; //# of neurons in the current layer
 
 
         public float[] outputs; //outputs of this layer
-        public float[] inputs; //inputs in into this layer
+        private float[] _inputs; //inputs in into this layer
         public float[,] weights; //weights of this layer
-        public float[,] weightsDelta; //deltas of this layer
+        private float[,] weightsDelta; //deltas of this layer
         public float[] gamma; //gamma of this layer
-        public float[] error; //error of the output layer
+        private float[] error; //error of the output layer
 
-        public static Random random = new Random(); //Static random class variable
+        private static Random random = new Random(); //Static random class variable
 
         /// <summary>
         /// Constructor initilizes vaiour data structures
@@ -162,7 +160,7 @@ public class NeuralNetwork
 
             //initilize datastructures
             outputs = new float[numberOfOuputs];
-            inputs = new float[numberOfInputs];
+            _inputs = new float[numberOfInputs];
             weights = new float[numberOfOuputs, numberOfInputs];
             weightsDelta = new float[numberOfOuputs, numberOfInputs];
             gamma = new float[numberOfOuputs];
@@ -175,26 +173,26 @@ public class NeuralNetwork
         /// </summary>
         public string[] SaveinString()
         {
-        	string[] s = new string[numberOfOuputs];
-        	int pos = 0;
-        	for(int y = 0;y < numberOfOuputs;y++)
-        	{
-        		for(int x = 0;x < numberOfInputs;x++)
-        		{
-        			s[pos] += weights[y, x].ToString() + " ";
-        		}
-        		pos++;
-        	}
-        	return s;
+            var s = new string[numberOfOuputs];
+            var pos = 0;
+            for (var y = 0; y < numberOfOuputs; y++)
+            {
+                for (var x = 0; x < numberOfInputs; x++)
+                {
+                    s[pos] += weights[y, x] + " ";
+                }
+                pos++;
+            }
+            return s;
         }
         /// <summary>
         /// Initilize weights between -0.5 and 0.5
         /// </summary>
-        public void InitilizeWeights()
+        private void InitilizeWeights()
         {
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
             {
-                for (int j = 0; j < numberOfInputs; j++)
+                for (var j = 0; j < numberOfInputs; j++)
                 {
                     weights[i, j] = (float)random.NextDouble() - 0.5f;
                 }
@@ -208,13 +206,13 @@ public class NeuralNetwork
         /// <returns></returns>
         public float[] FeedForward(float[] inputs)
         {
-            this.inputs = inputs;// keep shallow copy which can be used for back propagation
+            _inputs = inputs;// keep shallow copy which can be used for back propagation
 
             //feed forwards
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
             {
                 outputs[i] = 0;
-                for (int j = 0; j < numberOfInputs; j++)
+                for (var j = 0; j < numberOfInputs; j++)
                 {
                     outputs[i] += inputs[j] * weights[i, j];
                 }
@@ -230,7 +228,7 @@ public class NeuralNetwork
         /// </summary>
         /// <param name="value">An already computed TanH value</param>
         /// <returns></returns>
-        public float TanHDer(float value)
+        private static float TanHDer(float value)
         {
             return 1 - (value * value);
         }
@@ -242,19 +240,19 @@ public class NeuralNetwork
         public void BackPropOutput(float[] expected)
         {
             //Error dervative of the cost function
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
                 error[i] = outputs[i] - expected[i];
 
             //Gamma calculation
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
                 gamma[i] = error[i] * TanHDer(outputs[i]);
 
             //Caluclating detla weights
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
             {
-                for (int j = 0; j < numberOfInputs; j++)
+                for (var j = 0; j < numberOfInputs; j++)
                 {
-                    weightsDelta[i, j] = gamma[i] * inputs[j];
+                    weightsDelta[i, j] = gamma[i] * _inputs[j];
                 }
             }
         }
@@ -267,11 +265,11 @@ public class NeuralNetwork
         public void BackPropHidden(float[] gammaForward, float[,] weightsFoward)
         {
             //Caluclate new gamma using gamma sums of the forward layer
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
             {
                 gamma[i] = 0;
 
-                for (int j = 0; j < gammaForward.Length; j++)
+                for (var j = 0; j < gammaForward.Length; j++)
                 {
                     gamma[i] += gammaForward[j] * weightsFoward[j, i];
                 }
@@ -280,11 +278,11 @@ public class NeuralNetwork
             }
 
             //Caluclating detla weights
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
             {
-                for (int j = 0; j < numberOfInputs; j++)
+                for (var j = 0; j < numberOfInputs; j++)
                 {
-                    weightsDelta[i, j] = gamma[i] * inputs[j];
+                    weightsDelta[i, j] = gamma[i] * _inputs[j];
                 }
             }
         }
@@ -294,9 +292,9 @@ public class NeuralNetwork
         /// </summary>
         public void UpdateWeights()
         {
-            for (int i = 0; i < numberOfOuputs; i++)
+            for (var i = 0; i < numberOfOuputs; i++)
             {
-                for (int j = 0; j < numberOfInputs; j++)
+                for (var j = 0; j < numberOfInputs; j++)
                 {
                     weights[i, j] -= weightsDelta[i, j] * 0.033f;
                 }
