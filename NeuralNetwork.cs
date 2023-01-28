@@ -1,4 +1,3 @@
-Network.cs
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,8 +6,16 @@ namespace Neural
 {
     public class Network
     {
+        public enum ActivationFunction
+        {
+            Sigmoid,
+            Tanh,
+            LeakyRelu
+        }
         private NetworkTools tools;
         public TrainSet trainSet;
+        private ActivationFunction activationFunction;
+        private IActivationMethods activationMethod;
         private double[][] output;
         private double[][] bias;
         private double[][] error_signal;
@@ -19,9 +26,10 @@ namespace Neural
         public int OUTPUT_SIZE;
         public int NETWORK_SIZE;
 
-        public Network(int[] NetworkLayers)
+        public Network(int[] NetworkLayers, ActivationFunction activationFunction = ActivationFunction.LeakyRelu)
         {
             tools = new NetworkTools();
+            this.activationFunction = activationFunction;
             NETWORK_LAYER_SIZES = NetworkLayers;
             INPUT_SIZE = NetworkLayers[0];
             OUTPUT_SIZE = NetworkLayers[NetworkLayers.Length - 1];
@@ -43,6 +51,8 @@ namespace Neural
                     weights[i] = tools.createRandomArray(NETWORK_LAYER_SIZES[i], NETWORK_LAYER_SIZES[i - 1], -0.9, 0.9);
                 }
             }
+
+            SetActivationMethod();
         }
 
         public Network(Network nn)
@@ -58,6 +68,8 @@ namespace Neural
             INPUT_SIZE = nn.INPUT_SIZE;
             OUTPUT_SIZE = nn.OUTPUT_SIZE;
             NETWORK_SIZE = nn.NETWORK_SIZE;
+            activationFunction = nn.activationFunction;
+            SetActivationMethod();
         }
 
 
@@ -75,7 +87,9 @@ namespace Neural
             using (Stream stream = File.Open(filePath, append ? FileMode.Append : FileMode.Create))
             {
                 var binaryFormatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
+#pragma warning disable SYSLIB0011 // Type or member is obsolete
                 binaryFormatter.Serialize(stream, objectToWrite);
+#pragma warning restore SYSLIB0011 // Type or member is obsolete
             }
         }
 
@@ -90,7 +104,9 @@ namespace Neural
             using (Stream stream = File.Open(filePath, FileMode.Open))
             {
                 var binaryFormatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
-                return (T) binaryFormatter.Deserialize(stream);
+#pragma warning disable SYSLIB0011 // Type or member is obsolete
+                return (T)binaryFormatter.Deserialize(stream);
+#pragma warning restore SYSLIB0011 // Type or member is obsolete
             }
         }
 
@@ -106,8 +122,6 @@ namespace Neural
             bias = ReadFromBinaryFile<double[][]>(bias_path);
         }
 
-        private double sigmoid(double value) => 1.0 / (1 + Math.Exp(-value));
-
         public double[] calculate(double[] input)
         {
             if (input.Length != INPUT_SIZE) return null;
@@ -122,8 +136,8 @@ namespace Neural
                         sum += output[layer - 1][prevL] * weights[layer][neuron][prevL];
                     }
 
-                    output[layer][neuron] = sigmoid(sum);
-                    output_derivative[layer][neuron] = (sigmoid(sum) * (1 - sigmoid(sum)));
+                    output[layer][neuron] = activationMethod.Activation(sum);
+                    output_derivative[layer][neuron] = activationMethod.Deactivation(sum);
                 }
             }
 
@@ -261,6 +275,69 @@ namespace Neural
             return new Network(this);
         }
 
+        #region Activation methods
+        private void SetActivationMethod()
+        {
+            if (this.activationFunction == ActivationFunction.Sigmoid)
+            {
+                activationMethod = new ActivationSigmoid();
+            }
+            else if (this.activationFunction == ActivationFunction.Tanh)
+            {
+                activationMethod = new ActivationTanh();
+            }
+            else if (this.activationFunction == ActivationFunction.LeakyRelu)
+            {
+                activationMethod = new ActivationLeakyRelu();
+            }
+        }
+
+        private interface IActivationMethods
+        {
+            public double Activation(double value);
+            public double Deactivation(double value);
+        }
+
+        private class ActivationSigmoid : IActivationMethods
+        {
+            public double Activation(double value)
+            {
+                return 1.0 / (1.0 + Math.Exp(-value));
+            }
+
+            public double Deactivation(double value)
+            {
+                return Activation(value) * (1 - Activation(value));
+            }
+        }
+
+        private class ActivationTanh : IActivationMethods
+        {
+            public double Activation(double value)
+            {
+                return Math.Tanh(value);
+            }
+
+            public double Deactivation(double value)
+            {
+                return 1.0 - Math.Pow(Math.Tanh(value), 2.0);
+            }
+        }
+
+        private class ActivationLeakyRelu : IActivationMethods
+        {
+            public double Activation(double value)
+            {
+                return Math.Max(0.1 * value, value);
+            }
+
+            public double Deactivation(double value)
+            {
+                return value >= 0 ? 1 : 0.01;
+            }
+        }
+        #endregion
+
         public class TrainSet
         {
             struct dataStruct
@@ -286,7 +363,7 @@ namespace Neural
             public void addData(double[] dataIn, double[] expected)
             {
                 if (dataIn.Length != INPUT_SIZE || expected.Length != OUTPUT_SIZE) return;
-                allData.Add(new dataStruct {input = dataIn, output = expected});
+                allData.Add(new dataStruct { input = dataIn, output = expected });
             }
 
             public void clearData()
@@ -345,7 +422,7 @@ namespace Neural
             {
                 rand = new Random(Guid.NewGuid().GetHashCode());
             }
-            
+
             public NetworkTools(int seed)
             {
                 rand = new Random(seed);
@@ -473,7 +550,7 @@ namespace Neural
 
                 return index;
             }
-            
+
             public static int indexOfHighestValue(double[] values, int from, int to)
             {
                 int index = from;
