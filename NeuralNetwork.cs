@@ -1,6 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Neural
 {
@@ -21,34 +20,34 @@ namespace Neural
         private double[][] error_signal;
         private double[][] output_derivative;
         public double[][][] weights;
-        public int[] NETWORK_LAYER_SIZES;
-        public int INPUT_SIZE;
-        public int OUTPUT_SIZE;
-        public int NETWORK_SIZE;
+        public int[] networkLayerSizes;
+        public int inputSize;
+        public int outputSize;
+        public int networkSize;
 
-        public Network(int[] NetworkLayers, ActivationFunction activationFunction = ActivationFunction.LeakyRelu)
+        public Network(int[] NetworkLayers, ActivationFunction activationFunction = ActivationFunction.Tanh)
         {
             tools = new NetworkTools();
             this.activationFunction = activationFunction;
-            NETWORK_LAYER_SIZES = NetworkLayers;
-            INPUT_SIZE = NetworkLayers[0];
-            OUTPUT_SIZE = NetworkLayers[NetworkLayers.Length - 1];
-            NETWORK_SIZE = NetworkLayers.Length;
-            trainSet = new TrainSet(INPUT_SIZE, OUTPUT_SIZE);
-            output = new double[NETWORK_SIZE][];
-            bias = new double[NETWORK_SIZE][];
-            error_signal = new double[NETWORK_SIZE][];
-            output_derivative = new double[NETWORK_SIZE][];
-            weights = new double[NETWORK_SIZE][][];
-            for (var i = 0; i < NETWORK_SIZE; i++)
+            networkLayerSizes = NetworkLayers;
+            inputSize = NetworkLayers[0];
+            outputSize = NetworkLayers[NetworkLayers.Length - 1];
+            networkSize = NetworkLayers.Length;
+            trainSet = new TrainSet(inputSize, outputSize);
+            output = new double[networkSize][];
+            bias = new double[networkSize][];
+            error_signal = new double[networkSize][];
+            output_derivative = new double[networkSize][];
+            weights = new double[networkSize][][];
+            for (var i = 0; i < networkSize; i++)
             {
-                output[i] = new double[NETWORK_LAYER_SIZES[i]];
-                bias[i] = tools.createRandomArray(NETWORK_LAYER_SIZES[i], 0.3, 0.7);
-                error_signal[i] = new double[NETWORK_LAYER_SIZES[i]];
-                output_derivative[i] = new double[NETWORK_LAYER_SIZES[i]];
+                output[i] = new double[networkLayerSizes[i]];
+                bias[i] = tools.CreateRandomArray(networkLayerSizes[i], 0.3, 0.7);
+                error_signal[i] = new double[networkLayerSizes[i]];
+                output_derivative[i] = new double[networkLayerSizes[i]];
                 if (i > 0)
                 {
-                    weights[i] = tools.createRandomArray(NETWORK_LAYER_SIZES[i], NETWORK_LAYER_SIZES[i - 1], -0.9, 0.9);
+                    weights[i] = tools.CreateRandomArray(networkLayerSizes[i], networkLayerSizes[i - 1], -0.9, 0.9);
                 }
             }
 
@@ -64,10 +63,10 @@ namespace Neural
             error_signal = nn.error_signal;
             output_derivative = nn.output_derivative;
             weights = nn.weights;
-            NETWORK_LAYER_SIZES = nn.NETWORK_LAYER_SIZES;
-            INPUT_SIZE = nn.INPUT_SIZE;
-            OUTPUT_SIZE = nn.OUTPUT_SIZE;
-            NETWORK_SIZE = nn.NETWORK_SIZE;
+            networkLayerSizes = nn.networkLayerSizes;
+            inputSize = nn.inputSize;
+            outputSize = nn.outputSize;
+            networkSize = nn.networkSize;
             activationFunction = nn.activationFunction;
             SetActivationMethod();
         }
@@ -110,28 +109,29 @@ namespace Neural
             }
         }
 
-        public void saveNetwork(string weights_path, string bias_path)
+        public void SaveNetwork(string weights_path, string bias_path)
         {
             WriteToBinaryFile(weights_path, weights, false);
             WriteToBinaryFile(bias_path, bias, false);
         }
 
-        public void loadNetwork(string weights_path, string bias_path)
+        public void LoadNetwork(string weights_path, string bias_path)
         {
             weights = ReadFromBinaryFile<double[][][]>(weights_path);
             bias = ReadFromBinaryFile<double[][]>(bias_path);
         }
 
-        public double[] calculate(double[] input)
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public double[] Calculate(ref double[] input)
         {
-            if (input.Length != INPUT_SIZE) return null;
+            if (input.Length != inputSize) return null;
             output[0] = input;
-            for (int layer = 1; layer < NETWORK_SIZE; layer++)
+            for (int layer = 1; layer < networkSize; layer++)
             {
-                for (int neuron = 0; neuron < NETWORK_LAYER_SIZES[layer]; neuron++)
+                for (int neuron = 0; neuron < networkLayerSizes[layer]; neuron++)
                 {
                     var sum = bias[layer][neuron];
-                    for (int prevL = 0; prevL < NETWORK_LAYER_SIZES[layer - 1]; prevL++)
+                    for (int prevL = 0; prevL < networkLayerSizes[layer - 1]; prevL++)
                     {
                         sum += output[layer - 1][prevL] * weights[layer][neuron][prevL];
                     }
@@ -141,80 +141,126 @@ namespace Neural
                 }
             }
 
-            return output[NETWORK_SIZE - 1];
+            return output[networkSize - 1];
         }
 
-        public void train(int loops, int batch_size, double learningRate)
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public void Train(int loops, int batch_size, double learningRate)
         {
-            if (trainSet.INPUT_SIZE != INPUT_SIZE || trainSet.OUTPUT_SIZE != OUTPUT_SIZE) return;
+            if (trainSet.inputSize != inputSize || trainSet.outputSize != outputSize) return;
             for (int i = 0; i < loops; i++)
             {
-                TrainSet batch = trainSet.extractBatch(batch_size);
-                for (int b = 0; b < batch.size(); b++)
+                TrainSet batch = trainSet.ExtractBatch(batch_size);
+                for (int b = 0; b < batch.Size(); b++)
                 {
-                    train(batch.getInput(b), batch.getOutput(b), learningRate);
+                    var input = batch.GetInput(b);
+                    var output = batch.GetOutput(b);
+                    Train(ref input, ref output, learningRate);
                 }
             }
         }
 
-        public void train(double[] input, double[] target, double learningRate)
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public void TrainFor(TimeSpan timeSpan, int batch_size, double learningRate)
         {
-            if (input.Length != INPUT_SIZE || target.Length != OUTPUT_SIZE) return;
-            calculate(input);
-            backpropError(target);
-            updateWeights(learningRate);
+            if (trainSet.inputSize != inputSize || trainSet.outputSize != outputSize) return;
+            DateTime endTime = DateTime.Now + timeSpan;
+            while (DateTime.Now < endTime)
+            {
+                TrainSet batch = trainSet.ExtractBatch(batch_size);
+                for (int b = 0; b < batch.Size(); b++)
+                {
+                    var input = batch.GetInput(b);
+                    var output = batch.GetOutput(b);
+                    Train(ref input, ref output, learningRate);
+                }
+            }
         }
 
-        public void backpropError(double[] target)
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public void Train(ref double[] input, ref double[] target, double learningRate)
         {
-            for (int neuron = 0; neuron < NETWORK_LAYER_SIZES[NETWORK_LAYER_SIZES.Length - 1]; neuron++)
+            if (input.Length != inputSize || target.Length != outputSize) return;
+            Calculate(ref input);
+            backpropError(ref target);
+            UpdateWeights(learningRate);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public void backpropError(ref double[] target)
+        {
+            Span<int> spanNetworkSizes = networkLayerSizes;
+            ref int networkSizeBuffer = ref MemoryMarshal.GetReference(spanNetworkSizes);
+
+            Span<double> spanTarget = target;
+            ref double targetBuffer = ref MemoryMarshal.GetReference(spanTarget);
+
+            Span<double[]> errorSignal = error_signal;
+            Span<double[]> outputS = output;
+            Span<double[]> outputDerivative = output_derivative;
+            for (int neuron = 0; neuron < spanNetworkSizes[spanNetworkSizes.Length - 1]; neuron++)
             {
-                error_signal[NETWORK_SIZE - 1][neuron] = (output[NETWORK_SIZE - 1][neuron] - target[neuron]) *
-                                                         output_derivative[NETWORK_SIZE - 1][neuron];
+                double targetNeuron = Unsafe.Add(ref targetBuffer, neuron);
+                errorSignal[networkSize - 1][neuron] = (outputS[networkSize - 1][neuron] - targetNeuron) *
+                                                         outputDerivative[networkSize - 1][neuron];
             }
 
-            for (int layer = NETWORK_SIZE - 2; layer > 0; layer--)
+            Span<double[][]> weightTops = weights;
+            for (int layer = networkSize - 2; layer > 0; layer--)
             {
-                for (int neuron = 0; neuron < NETWORK_LAYER_SIZES[layer]; neuron++)
+                int firstLayerSize = Unsafe.Add(ref networkSizeBuffer, layer);
+                int secondLayerSize = Unsafe.Add(ref networkSizeBuffer, layer + 1);
+                for (int neuron = 0; neuron < firstLayerSize; neuron++)
                 {
                     var sum = 0.0;
-                    for (int nextNeuron = 0; nextNeuron < NETWORK_LAYER_SIZES[layer + 1]; nextNeuron++)
+                    for (int nextNeuron = 0; nextNeuron < secondLayerSize; nextNeuron++)
                     {
-                        sum += weights[layer + 1][nextNeuron][neuron] * error_signal[layer + 1][nextNeuron];
+                        sum += weightTops[layer + 1][nextNeuron][neuron] * errorSignal[layer + 1][nextNeuron];
                     }
 
-                    error_signal[layer][neuron] = sum * output_derivative[layer][neuron];
+                    errorSignal[layer][neuron] = sum * outputDerivative[layer][neuron];
                 }
             }
         }
 
-        public void updateWeights(double eta)
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public void UpdateWeights(double eta)
         {
-            for (int layer = 1; layer < NETWORK_SIZE; layer++)
+            var networkLayerSizesSpan = networkLayerSizes.AsSpan();
+            ref int networkSizeBuffer = ref MemoryMarshal.GetReference(networkLayerSizesSpan);
+
+            var weightsSpan = weights.AsSpan();
+            var errorSignalSpan = error_signal.AsSpan();
+            var biasSpan = bias.AsSpan();
+            var outputSpan = output.AsSpan();
+            for (int layer = 1; layer < networkSize; layer++)
             {
-                for (int neuron = 0; neuron < NETWORK_LAYER_SIZES[layer]; neuron++)
+                int layerSizeLast = Unsafe.Add(ref networkSizeBuffer, layer - 1);
+                int layerSize = Unsafe.Add(ref networkSizeBuffer, layer);
+                for (int neuron = 0; neuron < layerSize; neuron++)
                 {
                     double delta;
-                    for (int prevNeuron = 0; prevNeuron < NETWORK_LAYER_SIZES[layer - 1]; prevNeuron++)
+                    for (int prevNeuron = 0; prevNeuron < layerSizeLast; prevNeuron++)
                     {
-                        delta = -eta * output[layer - 1][prevNeuron] * error_signal[layer][neuron];
-                        weights[layer][neuron][prevNeuron] += delta;
+                        delta = -eta * outputSpan[layer - 1][prevNeuron] * errorSignalSpan[layer][neuron];
+                        weightsSpan[layer][neuron][prevNeuron] += delta;
                     }
 
-                    delta = -eta * error_signal[layer][neuron];
-                    bias[layer][neuron] += delta;
+                    delta = -eta * errorSignalSpan[layer][neuron];
+                    biasSpan[layer][neuron] += delta;
                 }
             }
         }
 
-        public double MSE(double[] input, double[] target)
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public double MSE(ref double[] input, ref double[] target)
         {
-            if (input.Length != INPUT_SIZE || target.Length != OUTPUT_SIZE) return -1;
-            calculate(input);
+            if (input.Length != inputSize || target.Length != outputSize) return -1;
+            Calculate(ref input);
             double v = 0;
             for (int i = 0; i < target.Length; i++)
             {
-                v += Math.Pow(target[i] - output[NETWORK_SIZE - 1][i], 2);
+                v += Math.Pow(target[i] - output[networkSize - 1][i], 2);
             }
 
             return v / (2d * target.Length);
@@ -223,28 +269,30 @@ namespace Neural
         public double MSE()
         {
             double v = 0;
-            for (int i = 0; i < trainSet.size(); i++)
+            for (int i = 0; i < trainSet.Size(); i++)
             {
-                v += MSE(trainSet.getInput(i), trainSet.getOutput(i));
+                var input = trainSet.GetInput(i);
+                var output = trainSet.GetOutput(i);
+                v += MSE(ref input, ref output);
             }
 
-            return v / (2d * trainSet.size());
+            return v / (2d * trainSet.Size());
         }
 
-        public void mutate(double probability = 0.2)
+        public void Mutate(double probability = 0.2)
         {
             tools.ApplyMutation(ref weights, probability);
             tools.ApplyMutation(ref bias, probability);
         }
 
-        public Network merge(Network nn, double probability = 0.5)
+        public Network Merge(Network nn, double probability = 0.5)
         {
-            if (this.INPUT_SIZE != nn.INPUT_SIZE || this.OUTPUT_SIZE != nn.OUTPUT_SIZE)
+            if (this.inputSize != nn.inputSize || this.outputSize != nn.outputSize)
             {
                 throw new Exception("Networks not of the same size!");
             }
 
-            Network result = this.copy();
+            Network result = this.Copy();
 
             for (int layer = 0; layer < weights.GetLength(0); layer++)
             {
@@ -252,14 +300,14 @@ namespace Neural
                 {
                     for (int single = 0; single < weights.GetLength(2); single++)
                     {
-                        double chance = tools.randomValue(0, 1);
+                        double chance = tools.RandomValue(0, 1);
                         if (chance >= probability)
                         {
                             result.weights[layer][neuron][single] = nn.weights[layer][neuron][single];
                         }
                     }
 
-                    double chanceBias = tools.randomValue(0, 1);
+                    double chanceBias = tools.RandomValue(0, 1);
                     if (chanceBias >= probability)
                     {
                         result.bias[layer][neuron] = nn.bias[layer][neuron];
@@ -270,7 +318,7 @@ namespace Neural
             return result;
         }
 
-        public Network copy()
+        public Network Copy()
         {
             return new Network(this);
         }
@@ -346,71 +394,86 @@ namespace Neural
                 public double[] output;
             }
 
-            public int INPUT_SIZE;
-            public int OUTPUT_SIZE;
+            public int inputSize;
+            public int outputSize;
             private NetworkTools tools;
 
             private List<dataStruct> allData;
 
             public TrainSet(int INPUT_SIZE, int OUTPUT_SIZE)
             {
-                this.INPUT_SIZE = INPUT_SIZE;
-                this.OUTPUT_SIZE = OUTPUT_SIZE;
+                this.inputSize = INPUT_SIZE;
+                this.outputSize = OUTPUT_SIZE;
                 tools = new NetworkTools();
                 allData = new List<dataStruct>();
             }
 
-            public void addData(double[] dataIn, double[] expected)
+            public void AddData(double[] dataIn, double[] expected)
             {
-                if (dataIn.Length != INPUT_SIZE || expected.Length != OUTPUT_SIZE) return;
+                if (dataIn.Length != inputSize || expected.Length != outputSize) return;
                 allData.Add(new dataStruct { input = dataIn, output = expected });
             }
 
-            public void clearData()
+            public void ClearData()
             {
                 allData = new List<dataStruct>();
             }
 
-            public TrainSet extractBatch(int size)
+            // Fisher-Yates shuffle algorithm
+            public void ShuffleData()
             {
-                if (size <= 0 || size > this.size()) return this;
-                var set = new TrainSet(INPUT_SIZE, OUTPUT_SIZE);
-                var ids = tools.randomValues(0, this.size(), size);
+                Random rand = new();
+                int n = allData.Count;
+                while (n > 1)
+                {
+                    n--;
+                    int k = rand.Next(n + 1);
+                    var value = allData[k];
+                    allData[k] = allData[n];
+                    allData[n] = value;
+                }
+            }
+
+            public TrainSet ExtractBatch(int size)
+            {
+                if (size <= 0 || size > this.Size()) return this;
+                var set = new TrainSet(inputSize, outputSize);
+                var ids = tools.RandomValues(0, this.Size(), size);
                 foreach (var temp in ids)
                 {
-                    set.addData(getInput(temp), getOutput(temp));
+                    set.AddData(GetInput(temp), GetOutput(temp));
                 }
 
                 return set;
             }
 
-            public int size()
+            public int Size()
             {
                 return allData.Count;
             }
 
-            public double[] getInput(int index)
+            public double[] GetInput(int index)
             {
-                if (index >= 0 && index < size())
+                if (index >= 0 && index < Size())
                     return allData[index].input;
                 return null;
             }
 
-            public double[] getOutput(int index)
+            public double[] GetOutput(int index)
             {
-                if (index >= 0 && index < size())
+                if (index >= 0 && index < Size())
                     return allData[index].output;
                 return null;
             }
 
-            public int getINPUT_SIZE()
+            public int GetInputSize()
             {
-                return INPUT_SIZE;
+                return inputSize;
             }
 
-            public int getOUTPUT_SIZE()
+            public int GetOutputSize()
             {
-                return OUTPUT_SIZE;
+                return outputSize;
             }
         }
 
@@ -428,18 +491,6 @@ namespace Neural
                 rand = new Random(seed);
             }
 
-            public double[] createArray(int size, double init_value)
-            {
-                if (size < 1) return null;
-                var ar = new double[size];
-                for (var i = 0; i < ar.Length; i++)
-                {
-                    ar[i] = init_value;
-                }
-
-                return ar;
-            }
-
             public void ApplyMutation(ref double[][][] weights, double probability)
             {
                 for (int layer = 1; layer < weights.GetLength(0); layer++)
@@ -448,10 +499,10 @@ namespace Neural
                     {
                         for (int single = 0; single < weights[layer][neuron].Length; single++)
                         {
-                            double chance = randomValue(0, 1);
+                            double chance = RandomValue(0, 1);
                             if (probability >= chance)
                             {
-                                double value = randomValue(-1, 1);
+                                double value = RandomValue(-1, 1);
                                 weights[layer][neuron][single] = value;
                             }
                         }
@@ -465,68 +516,66 @@ namespace Neural
                 {
                     for (int neuron = 0; neuron < bias[layer].Length; neuron++)
                     {
-                        double chance = randomValue(0, 1);
+                        double chance = RandomValue(0, 1);
                         if (probability >= chance)
                         {
-                            double value = randomValue(-1, 1);
+                            double value = RandomValue(-1, 1);
                             bias[layer][neuron] = value;
                         }
                     }
                 }
             }
 
-            public double[] createRandomArray(int size, double lower_bound, double upper_bound)
+            public double[] CreateRandomArray(int size, double lower_bound, double upper_bound)
             {
                 if (size < 1) return null;
                 var ar = new double[size];
                 for (var i = 0; i < ar.Length; i++)
                 {
-                    ar[i] = randomValue(lower_bound, upper_bound);
+                    ar[i] = RandomValue(lower_bound, upper_bound);
                 }
 
                 return ar;
             }
 
-            public double[][] createRandomArray(int sizeX, int sizeY, double lower_bound, double upper_bound)
+            public double[][] CreateRandomArray(int sizeX, int sizeY, double lower_bound, double upper_bound)
             {
                 if (sizeX < 1 || sizeY < 1) return null;
                 var ar = new double[sizeX][];
                 for (var i = 0; i < sizeX; i++)
                 {
-                    ar[i] = createRandomArray(sizeY, lower_bound, upper_bound);
+                    ar[i] = CreateRandomArray(sizeY, lower_bound, upper_bound);
                 }
 
                 return ar;
             }
 
-            public double randomValue(double lower_bound, double upper_bound)
+            public double RandomValue(double lower_bound, double upper_bound)
             {
                 return rand.NextDouble() * (upper_bound - lower_bound) + lower_bound;
             }
 
-            private bool contais(int[] values, int value)
+            private bool Contais(int[] values, int value)
             {
                 foreach (var i in values)
                 {
-                    if (i == -9) return false;
                     if (i == value) return true;
                 }
 
                 return false;
             }
 
-            public int[] randomValues(int lowerBound, int upperBound, int amount)
+            public int[] RandomValues(int lowerBound, int upperBound, int amount)
             {
                 lowerBound--;
 
                 if (amount > (upperBound - lowerBound)) return null;
 
                 var values = new int[amount];
-                for (var i = 0; i < values.Length; i++) values[i] = -9;
                 for (var n = 0; n < values.Length; n++)
                 {
                     var i = rand.Next(lowerBound + 1, upperBound);
-                    while (contais(values, i))
+                    while (Contais(values, i))
                     {
                         i = rand.Next(lowerBound + 1, upperBound);
                     }
@@ -537,7 +586,7 @@ namespace Neural
                 return values;
             }
 
-            public static int indexOfHighestValue(double[] values)
+            public static int IndexOfHighestValue(double[] values)
             {
                 int index = 0;
                 for (int i = 1; i < values.Length; i++)
@@ -551,7 +600,7 @@ namespace Neural
                 return index;
             }
 
-            public static int indexOfHighestValue(double[] values, int from, int to)
+            public static int IndexOfHighestValue(double[] values, int from, int to)
             {
                 int index = from;
                 for (int i = from; i < to; i++)
